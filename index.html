@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>周度市场观察</title>
+  <style>
+    :root{--bg:#f5f7fb;--surface:#fff;--ink:#22304a;--muted:#71809a;--rule:#dfe6f0;--accent:#3267d6}
+    *{box-sizing:border-box;border-radius:0}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+    .toolbar{position:sticky;top:0;z-index:10;border-bottom:1px solid var(--rule);background:rgba(255,255,255,.97)}
+    .toolbar-inner{width:min(100%,1100px);min-height:72px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:18px}
+    .brand{margin-right:auto;white-space:nowrap}
+    .brand strong{display:block;font-size:19px;line-height:1.35}
+    .brand span{display:block;margin-top:2px;color:var(--muted);font-size:12px}
+    .navigation{display:flex;align-items:center;gap:8px}
+    button,select,.open-link{min-height:38px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+    button{padding:6px 12px;cursor:pointer}
+    button:hover:not(:disabled),select:hover,.open-link:hover{border-color:var(--accent);color:var(--accent)}
+    button:disabled{cursor:not-allowed;opacity:.4}
+    select{max-width:210px;padding:6px 30px 6px 10px;cursor:pointer}
+    .open-link{padding:6px 12px;text-decoration:none;white-space:nowrap}
+    main{width:min(100%,1100px);margin:0 auto;padding:24px}
+    #report{display:block;width:100%;min-height:70vh;border:0;background:transparent}
+    .message{padding:42px 24px;border:1px solid var(--rule);background:var(--surface);text-align:center}
+    .message strong{display:block;font-size:18px}
+    .message p{margin:10px 0 0;color:var(--muted);font-size:14px;line-height:1.7}
+    [hidden]{display:none!important}
+    @media(max-width:680px){
+      .toolbar-inner{flex-wrap:wrap;gap:10px;padding:12px 16px}
+      .brand{width:100%}
+      .navigation{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto}
+      .open-link{display:none}
+      select{width:100%;max-width:none}
+      main{padding:16px 0}
+    }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="toolbar-inner">
+      <div class="brand"><strong>周度市场观察</strong><span>市场体温与行业风向标</span></div>
+      <nav class="navigation" aria-label="历史周报告导航">
+        <button id="older" type="button">上一周</button>
+        <select id="week-select" aria-label="选择报告日期" disabled></select>
+        <button id="newer" type="button">后一周</button>
+      </nav>
+      <a id="open-report" class="open-link" href="#" target="_blank" rel="noopener">打开原始报告</a>
+    </div>
+  </header>
+  <main>
+    <div id="loading" class="message"><strong>正在读取报告清单</strong></div>
+    <div id="error" class="message" hidden><strong>报告暂时无法加载</strong><p id="error-detail"></p></div>
+    <iframe id="report" title="周度市场报告" hidden></iframe>
+  </main>
+  <script>
+    const reportDirectory = "reports/";
+    const frame = document.getElementById("report");
+    const select = document.getElementById("week-select");
+    const olderButton = document.getElementById("older");
+    const newerButton = document.getElementById("newer");
+    const openLink = document.getElementById("open-report");
+    const loading = document.getElementById("loading");
+    const error = document.getElementById("error");
+    const errorDetail = document.getElementById("error-detail");
+    let reports = [];
+
+    function dateLabel(value) {
+      const [year, month, day] = value.split("-");
+      return `${year}年${Number(month)}月${Number(day)}日`;
+    }
+
+    function resizeReport() {
+      try {
+        const document = frame.contentDocument;
+        if (!document) return;
+        const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+        frame.style.height = `${height + 2}px`;
+      } catch (_) {
+        frame.style.height = "85vh";
+      }
+    }
+
+    function showReport(value, updateAddress = true) {
+      const index = reports.findIndex(report => report.date === value);
+      if (index < 0) return;
+      const report = reports[index];
+      select.value = report.date;
+      olderButton.disabled = index === reports.length - 1;
+      newerButton.disabled = index === 0;
+      openLink.href = reportDirectory + report.file;
+      frame.title = `${dateLabel(report.date)}周度市场报告`;
+      error.hidden = true;
+      frame.hidden = false;
+      if (frame.getAttribute("src") !== reportDirectory + report.file) {
+        frame.src = reportDirectory + report.file;
+      } else {
+        resizeReport();
+      }
+      if (updateAddress) {
+        const address = new URL(window.location.href);
+        address.searchParams.set("week", report.date);
+        window.history.replaceState(null, "", address);
+      }
+    }
+
+    function showError(message) {
+      loading.hidden = true;
+      frame.hidden = true;
+      error.hidden = false;
+      errorDetail.textContent = message;
+    }
+
+    async function initialize() {
+      try {
+        const response = await fetch(`${reportDirectory}index.json`, {cache: "no-store"});
+        if (!response.ok) throw new Error("清单读取失败");
+        const manifest = await response.json();
+        reports = (manifest.reports || [])
+          .filter(report => /^\d{4}-\d{2}-\d{2}$/.test(report.date) && /^market_weekly_\d{4}-\d{2}-\d{2}\.html$/.test(report.file))
+          .sort((a, b) => b.date.localeCompare(a.date));
+        if (!reports.length) throw new Error("清单中没有可展示的报告");
+        select.innerHTML = "";
+        reports.forEach(report => {
+          const option = document.createElement("option");
+          option.value = report.date;
+          option.textContent = dateLabel(report.date);
+          select.appendChild(option);
+        });
+        select.disabled = false;
+        loading.hidden = true;
+        const requested = new URLSearchParams(window.location.search).get("week");
+        showReport(reports.some(report => report.date === requested) ? requested : reports[0].date);
+      } catch (_) {
+        showError("请确认已上传主页面、报告清单及完整报告目录。每周在本地生成报告后，将更新后的文件一并发布。");
+      }
+    }
+
+    select.addEventListener("change", () => showReport(select.value));
+    olderButton.addEventListener("click", () => showReport(reports[select.selectedIndex + 1]?.date));
+    newerButton.addEventListener("click", () => showReport(reports[select.selectedIndex - 1]?.date));
+    frame.addEventListener("load", resizeReport);
+    window.addEventListener("resize", resizeReport);
+    initialize();
+  </script>
+</body>
+</html>
