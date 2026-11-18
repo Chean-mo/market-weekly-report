@@ -16,7 +16,7 @@
 
 ```text
 market-weekly-radar/
-├── index.html                 # 🌐 主引导页（内置“时光机”下拉菜单，默认展示最新一周）
+├── index.html                 # 🌐 主引导页（内置下拉菜单，默认展示最新一周）
 ├── LICENSE                    # ⚖️ 开源许可协议 (CC BY 4.0)
 ├── README.md                  # 📖 项目说明文档
 └── reports/                   # 📁 历年历周生成的子 HTML 报告目录
